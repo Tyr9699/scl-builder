@@ -1,0 +1,44 @@
+# SCLAlertView 云端自动打包工作流
+# 放到 GitHub 仓库的 .github/workflows/scl-build.yml
+# 两种触发：① 网页点打包时立即 workflow_dispatch（推荐）② 定时 cron 兜底
+# 仓库根目录需包含：worker.py、sdk_src/
+
+name: SCL Dylib Auto Build
+
+on:
+  # 网页后台点「打包」时通过 GitHub API 立即触发，可指定任务 ID
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: '要处理的任务 ID（留空则自动拉取队列第一个）'
+        required: false
+        default: ''
+  # 定时兜底（GitHub 免费仓库可能暂停/延迟，故不作为主要方式）
+  schedule:
+    - cron: '*/5 * * * *'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 检查必要文件
+        run: |
+          ls -la
+          test -f worker.py && test -d sdk_src || { echo "::error::缺少 worker.py 或 sdk_src（放到仓库根目录）"; exit 1; }
+
+      - name: 运行构建 worker
+        env:
+          SCL_BASE_URL: ${{ secrets.SCL_BASE_URL }}
+          SCL_WORKER_TOKEN: ${{ secrets.SCL_WORKER_TOKEN }}
+          SCL_JOB_ID: ${{ github.event.inputs.job_id }}
+          SCL_ONCE: '1'
+        run: python3 worker.py
